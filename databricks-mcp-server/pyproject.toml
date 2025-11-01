@@ -1,0 +1,22 @@
+[project]
+name = "databricks-mcp-server"
+version = "0.1.0"
+description = "MCP Server for Databricks Unity Catalog with SQL/NL queries and Plotly charting"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=0.9.0",
+    "databricks-sdk>=0.20.0",
+    "plotly>=5.18.0",
+    "pandas>=2.0.0",
+    "anthropic>=0.21.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+databricks-mcp-server = "databricks_mcp_server.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
