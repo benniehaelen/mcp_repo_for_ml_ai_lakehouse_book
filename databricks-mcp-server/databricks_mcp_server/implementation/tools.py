@@ -1,7 +1,29 @@
 """
-Tool handlers for Databricks MCP Server
-Handles all MCP tool implementations for Unity Catalog operations
+Databricks MCP Server - Tool Handlers
+=====================================
+
+This module defines the `ToolHandler` class which implements all MCP tool
+operations related to the Databricks Unity Catalog and Databricks SQL execution.
+
+Responsibilities
+----------------
+- Implements all tool actions defined in the MCP protocol.
+- Interacts with the Databricks REST API via the `WorkspaceClient`.
+- Optionally integrates with Anthropic (Claude) for NL → SQL generation.
+- Generates visualizations via Plotly and encodes them for MCP delivery.
+
+Main Features
+-------------
+1. List Databricks Unity Catalog catalogs, schemas, and tables
+2. Retrieve detailed table metadata and schema info
+3. Execute SQL statements and return structured results
+4. Translate natural language queries into SQL (Claude integration)
+5. Create Plotly charts (bar, line, scatter, pie, histogram, box)
+
+Author: Bennie Haelen
+Date: 2025
 """
+
 import logging
 import os
 import base64
@@ -12,6 +34,7 @@ from anthropic import Anthropic
 from databricks.sdk import WorkspaceClient
 from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
 
+# Pydantic models, IO schemas, and helpers
 from databricks_mcp_server.pydantic_models import (
     # Input models
     ListCatalogsInput,
@@ -43,117 +66,145 @@ logger = logging.getLogger(__name__)
 
 
 class ToolHandler:
-    """Handles all MCP tool operations"""
-    
+    """
+    ToolHandler
+    ============
+
+    Manages all MCP tools exposed by the Databricks MCP Server.
+
+    Responsibilities:
+    -----------------
+    - Defines tool schemas and capabilities
+    - Executes Databricks Unity Catalog queries (catalogs, schemas, tables)
+    - Executes SQL queries through Databricks SQL warehouses
+    - Generates SQL from natural language prompts using Anthropic Claude
+    - Creates charts from SQL result data using Plotly
+
+    Attributes:
+    -----------
+    workspace_client : Optional[WorkspaceClient]
+        Databricks SDK client used to interact with the workspace.
+    anthropic_client : Optional[Anthropic]
+        Anthropic client used for natural language → SQL translation.
+    """
+
     def __init__(
         self,
         workspace_client: Optional[WorkspaceClient] = None,
-        anthropic_client: Optional[Anthropic] = None
+        anthropic_client: Optional[Anthropic] = None,
     ):
         self.workspace_client = workspace_client
         self.anthropic_client = anthropic_client
-    
+
+    # -----------------------------------------------------------------------
+    # Client configuration setters
+    # -----------------------------------------------------------------------
     def set_workspace_client(self, client: WorkspaceClient):
-        """Set the Databricks workspace client"""
+        """Assign a Databricks workspace client to the handler."""
         self.workspace_client = client
-    
+
     def set_anthropic_client(self, client: Anthropic):
-        """Set the Anthropic API client"""
+        """Assign an Anthropic client for NL → SQL translation."""
         self.anthropic_client = client
-    
+
+    # -----------------------------------------------------------------------
+    # Tool Definitions
+    # -----------------------------------------------------------------------
     def get_tool_definitions(self) -> List[Tool]:
-        """Get list of available tools with their schemas"""
+        """
+        Return a list of MCP tool definitions and their corresponding schemas.
+        Each tool includes a Pydantic input schema for structured validation.
+        """
         return [
             Tool(
                 name="list_catalogs",
                 description="List all catalogs in Unity Catalog",
-                inputSchema=get_tool_input_schema(ListCatalogsInput)
+                inputSchema=get_tool_input_schema(ListCatalogsInput),
             ),
             Tool(
                 name="list_schemas",
                 description="List all schemas in a catalog",
-                inputSchema=get_tool_input_schema(ListSchemasInput)
+                inputSchema=get_tool_input_schema(ListSchemasInput),
             ),
             Tool(
                 name="list_tables",
                 description="List all tables in a schema",
-                inputSchema=get_tool_input_schema(ListTablesInput)
+                inputSchema=get_tool_input_schema(ListTablesInput),
             ),
             Tool(
                 name="get_table_info",
                 description="Get detailed information about a table",
-                inputSchema=get_tool_input_schema(GetTableInfoInput)
+                inputSchema=get_tool_input_schema(GetTableInfoInput),
             ),
             Tool(
                 name="execute_sql",
                 description="Execute a SQL query on Databricks",
-                inputSchema=get_tool_input_schema(ExecuteSQLInput)
+                inputSchema=get_tool_input_schema(ExecuteSQLInput),
             ),
             Tool(
                 name="query_natural_language",
                 description="Convert natural language to SQL and execute",
-                inputSchema=get_tool_input_schema(QueryNaturalLanguageInput)
+                inputSchema=get_tool_input_schema(QueryNaturalLanguageInput),
             ),
             Tool(
                 name="create_chart",
                 description="Create a Plotly chart from query results",
-                inputSchema=get_tool_input_schema(CreateChartInput)
-            )
+                inputSchema=get_tool_input_schema(CreateChartInput),
+            ),
         ]
-    
-    # ========================================================================
-    # Tool Implementations
-    # ========================================================================
-    
+
+    # =======================================================================
+    # TOOL IMPLEMENTATIONS
+    # =======================================================================
+
     async def list_catalogs(self, input_data: ListCatalogsInput) -> Sequence[TextContent]:
-        """List all Unity Catalogs"""
+        """
+        List all Unity Catalogs in the Databricks workspace.
+        Returns a JSON-formatted list of catalogs with metadata.
+        """
         if not self.workspace_client:
             error = ErrorOutput(error="Databricks client not initialized")
             return [TextContent(type="text", text=format_tool_output(error))]
-        
+
         catalogs = list(self.workspace_client.catalogs.list())
         output = ListCatalogsOutput(
             catalogs=[
-                CatalogInfo(
-                    name=c.name,
-                    comment=c.comment,
-                    owner=c.owner
-                )
+                CatalogInfo(name=c.name, comment=c.comment, owner=c.owner)
                 for c in catalogs
             ]
         )
         return [TextContent(type="text", text=format_tool_output(output))]
-    
+
     async def list_schemas(self, input_data: ListSchemasInput) -> Sequence[TextContent]:
-        """List all schemas in a catalog"""
+        """
+        List all schemas in a specific catalog.
+        """
         if not self.workspace_client:
             error = ErrorOutput(error="Databricks client not initialized")
             return [TextContent(type="text", text=format_tool_output(error))]
-        
+
         schemas = list(self.workspace_client.schemas.list(catalog_name=input_data.catalog))
         output = ListSchemasOutput(
             catalog=input_data.catalog,
             schemas=[
-                SchemaInfo(
-                    name=s.name,
-                    comment=s.comment,
-                    owner=s.owner
-                )
-                for s in schemas
-            ]
+                SchemaInfo(name=s.name, comment=s.comment, owner=s.owner) for s in schemas
+            ],
         )
         return [TextContent(type="text", text=format_tool_output(output))]
-    
+
     async def list_tables(self, input_data: ListTablesInput) -> Sequence[TextContent]:
-        """List all tables in a schema"""
+        """
+        List all tables in a schema under a given catalog.
+        """
         if not self.workspace_client:
             error = ErrorOutput(error="Databricks client not initialized")
             return [TextContent(type="text", text=format_tool_output(error))]
-        
-        tables = list(self.workspace_client.tables.list(
-            catalog_name=input_data.catalog,
-            schema_name=input_data.schema
-        ))
+
+        tables = list(
+            self.workspace_client.tables.list(
+                catalog_name=input_data.catalog, schema_name=input_data.schema
+            )
+        )
         output = ListTablesOutput(
             catalog=input_data.catalog,
             schema=input_data.schema,
@@ -162,19 +213,22 @@ class ToolHandler:
                     name=t.name,
                     table_type=t.table_type.value if t.table_type else None,
                     comment=t.comment,
-                    owner=t.owner
+                    owner=t.owner,
                 )
                 for t in tables
-            ]
+            ],
         )
         return [TextContent(type="text", text=format_tool_output(output))]
-    
+
     async def get_table_info(self, input_data: GetTableInfoInput) -> Sequence[TextContent]:
-        """Get detailed table information"""
+        """
+        Retrieve detailed metadata for a table including columns, data types,
+        comments, and owner information.
+        """
         if not self.workspace_client:
             error = ErrorOutput(error="Databricks client not initialized")
             return [TextContent(type="text", text=format_tool_output(error))]
-        
+
         table_info = self.workspace_client.tables.get(
             full_name=f"{input_data.catalog}.{input_data.schema}.{input_data.table}"
         )
@@ -183,7 +237,9 @@ class ToolHandler:
             catalog_name=table_info.catalog_name,
             schema_name=table_info.schema_name,
             table_type=table_info.table_type.value if table_info.table_type else None,
-            data_source_format=table_info.data_source_format.value if table_info.data_source_format else None,
+            data_source_format=table_info.data_source_format.value
+            if table_info.data_source_format
+            else None,
             columns=[
                 ColumnInfo(
                     name=col.name,
@@ -191,86 +247,98 @@ class ToolHandler:
                     type_text=col.type_text,
                     comment=col.comment,
                     nullable=col.nullable,
-                    position=col.position
+                    position=col.position,
                 )
                 for col in (table_info.columns or [])
             ],
             owner=table_info.owner,
             comment=table_info.comment,
-            properties=table_info.properties
+            properties=table_info.properties,
         )
         return [TextContent(type="text", text=format_tool_output(output))]
-    
+
     async def execute_sql(self, input_data: ExecuteSQLInput) -> Sequence[TextContent]:
-        """Execute SQL query"""
+        """
+        Execute a SQL query on Databricks using a specified warehouse.
+
+        Returns structured output containing:
+        - query status
+        - row count
+        - column names
+        - result data (if available)
+        """
         if not self.workspace_client:
             error = ErrorOutput(error="Databricks client not initialized")
             return [TextContent(type="text", text=format_tool_output(error))]
-        
+
         try:
-            # Get warehouse ID
+            # Get warehouse ID from input or environment
             warehouse_id = input_data.warehouse_id or os.getenv("DATABRICKS_WAREHOUSE_ID")
-            
+
             if not warehouse_id:
                 error = ErrorOutput(
                     error="No warehouse_id provided and DATABRICKS_WAREHOUSE_ID not set"
                 )
                 return [TextContent(type="text", text=format_tool_output(error))]
-            
-            # Execute query
+
+            # Execute SQL statement
             response = self.workspace_client.statement_execution.execute_statement(
-                warehouse_id=warehouse_id,
-                statement=input_data.query,
-                wait_timeout="30s"
+                warehouse_id=warehouse_id, statement=input_data.query, wait_timeout="30s"
             )
-            
-            # Convert result to pandas DataFrame
+
+            # Transform Databricks response → pandas DataFrame
             if response.result and response.result.data_array:
                 columns = [col.name for col in (response.manifest.schema.columns or [])]
                 df = pd.DataFrame(response.result.data_array, columns=columns)
-                
+
                 output = ExecuteSQLOutput(
                     status="success",
                     row_count=len(df),
                     columns=columns,
-                    data=df.to_dict(orient="records")
+                    data=df.to_dict(orient="records"),
                 )
             else:
                 output = ExecuteSQLOutput(
                     status="success",
-                    message="Query executed successfully but returned no data"
+                    message="Query executed successfully but returned no data",
                 )
-            
+
             return [TextContent(type="text", text=format_tool_output(output))]
-            
+
         except Exception as e:
             logger.error(f"Error executing SQL: {e}", exc_info=True)
             error = ErrorOutput(error=f"Error executing query: {str(e)}")
             return [TextContent(type="text", text=format_tool_output(error))]
-    
+
     async def query_natural_language(
-        self,
-        input_data: QueryNaturalLanguageInput
+        self, input_data: QueryNaturalLanguageInput
     ) -> Sequence[TextContent]:
-        """Convert natural language to SQL and execute"""
+        """
+        Convert a natural language question into SQL using Anthropic Claude,
+        then execute the generated SQL query on Databricks.
+        """
         if not self.anthropic_client:
             error = ErrorOutput(
                 error="Anthropic client not initialized. Set ANTHROPIC_API_KEY environment variable."
             )
             return [TextContent(type="text", text=format_tool_output(error))]
-        
+
         try:
-            # Get table schema
+            # Retrieve schema information for the table
             table_info = self.workspace_client.tables.get(
                 full_name=f"{input_data.catalog}.{input_data.schema}.{input_data.table}"
             )
-            
-            schema_text = "\n".join([
-                f"- {col.name} ({col.type_text or col.type_name.value if col.type_name else 'unknown'}): {col.comment or 'No description'}"
-                for col in (table_info.columns or [])
-            ])
-            
-            # Generate SQL using Claude
+
+            # Build schema description text
+            schema_text = "\n".join(
+                [
+                    f"- {col.name} ({col.type_text or col.type_name.value if col.type_name else 'unknown'}): "
+                    f"{col.comment or 'No description'}"
+                    for col in (table_info.columns or [])
+                ]
+            )
+
+            # Construct Claude prompt
             prompt = f"""Convert this natural language question to a SQL query for Databricks Delta Lake.
 
 Table: {input_data.catalog}.{input_data.schema}.{input_data.table}
@@ -282,106 +350,110 @@ Schema:
 Question: {input_data.question}
 
 Provide only the SQL query without any explanation or markdown formatting."""
-            
+
+            # Call Anthropic API
             message = self.anthropic_client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
             )
-            
+
             sql_query = message.content[0].text.strip()
-            
-            # Remove markdown code blocks if present
+
+            # Strip markdown code fences if included
             if sql_query.startswith("```"):
                 lines = sql_query.split("\n")
                 sql_query = "\n".join(lines[1:-1]) if len(lines) > 2 else sql_query
-            
-            # Execute the generated query
+
+            # Execute the generated SQL query
             exec_input = ExecuteSQLInput(
-                query=sql_query,
-                warehouse_id=input_data.warehouse_id
+                query=sql_query, warehouse_id=input_data.warehouse_id
             )
             exec_result = await self.execute_sql(exec_input)
-            
-            # Parse execution result
+
             exec_output = ExecuteSQLOutput.model_validate_json(exec_result[0].text)
-            
-            # Create combined output
+
+            # Combine the SQL and execution result
             output = QueryNaturalLanguageOutput(
-                generated_sql=sql_query,
-                execution_result=exec_output
+                generated_sql=sql_query, execution_result=exec_output
             )
-            
             return [TextContent(type="text", text=format_tool_output(output))]
-            
+
         except Exception as e:
             logger.error(f"Error in NL query: {e}", exc_info=True)
             error = ErrorOutput(error=str(e))
             return [TextContent(type="text", text=format_tool_output(error))]
-    
+
     async def create_chart(
-        self,
-        input_data: CreateChartInput
+        self, input_data: CreateChartInput
     ) -> Sequence[TextContent | ImageContent]:
-        """Create a Plotly chart from query results"""
+        """
+        Create a Plotly visualization from the results of a SQL query.
+        Supported chart types: bar, line, scatter, pie, histogram, box.
+        """
         try:
-            # Execute query first
+            # Execute SQL query first
             exec_input = ExecuteSQLInput(
-                query=input_data.query,
-                warehouse_id=input_data.warehouse_id
+                query=input_data.query, warehouse_id=input_data.warehouse_id
             )
             result = await self.execute_sql(exec_input)
-            
-            # Parse result
+
             exec_output = ExecuteSQLOutput.model_validate_json(result[0].text)
-            
+
+            # Validate that data exists
             if exec_output.status != "success" or not exec_output.data:
                 error = ErrorOutput(error="No data to chart")
                 return [TextContent(type="text", text=format_tool_output(error))]
-            
-            # Convert to DataFrame
+
             df = pd.DataFrame(exec_output.data)
-            
             if df.empty:
                 error = ErrorOutput(error="No data to chart")
                 return [TextContent(type="text", text=format_tool_output(error))]
-            
-            # Create chart based on type
+
+            # Create a Plotly figure
             fig = self._create_plotly_figure(df, input_data)
-            
             if fig is None:
-                error = ErrorOutput(error=f"Unsupported chart type: {input_data.chart_type.value}")
+                error = ErrorOutput(
+                    error=f"Unsupported chart type: {input_data.chart_type.value}"
+                )
                 return [TextContent(type="text", text=format_tool_output(error))]
-            
-            # Convert to image
+
+            # Render figure as PNG
             img_bytes = fig.to_image(format="png", width=1200, height=800)
             img_base64 = base64.b64encode(img_bytes).decode()
-            
-            # Create output
+
             output = CreateChartOutput(
                 status="success",
                 message=f"Chart created successfully ({input_data.chart_type.value})",
                 chart_type=input_data.chart_type.value,
                 image_data=img_base64,
-                mime_type="image/png"
+                mime_type="image/png",
             )
-            
+
             return [
                 TextContent(type="text", text=format_tool_output(output)),
-                ImageContent(type="image", data=img_base64, mimeType="image/png")
+                ImageContent(type="image", data=img_base64, mimeType="image/png"),
             ]
-            
+
         except Exception as e:
             logger.error(f"Error creating chart: {e}", exc_info=True)
             error = ErrorOutput(error=f"Error creating chart: {str(e)}")
             return [TextContent(type="text", text=format_tool_output(error))]
-    
+
+    # -----------------------------------------------------------------------
+    # Internal helper
+    # -----------------------------------------------------------------------
     def _create_plotly_figure(self, df: pd.DataFrame, input_data: CreateChartInput):
-        """Create a Plotly figure based on chart type and input"""
+        """
+        Generate a Plotly figure object based on the chart type specified.
+        Defaults to first two columns for x/y if unspecified.
+        """
         chart_type = input_data.chart_type.value
         x_col = input_data.x_column or df.columns[0]
-        y_col = input_data.y_column or (df.columns[1] if len(df.columns) > 1 else df.columns[0])
-        
+        y_col = input_data.y_column or (
+            df.columns[1] if len(df.columns) > 1 else df.columns[0]
+        )
+
         if chart_type == "bar":
             return px.bar(df, x=x_col, y=y_col, title=input_data.title)
         elif chart_type == "line":
@@ -394,5 +466,5 @@ Provide only the SQL query without any explanation or markdown formatting."""
             return px.histogram(df, x=x_col, title=input_data.title)
         elif chart_type == "box":
             return px.box(df, y=y_col, title=input_data.title)
-        
+
         return None
