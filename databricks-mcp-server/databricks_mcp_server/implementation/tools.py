@@ -202,12 +202,12 @@ class ToolHandler:
 
         tables = list(
             self.workspace_client.tables.list(
-                catalog_name=input_data.catalog, schema_name=input_data.schema
+                catalog_name=input_data.catalog, schema_name=input_data.schema_name
             )
         )
         output = ListTablesOutput(
             catalog=input_data.catalog,
-            schema=input_data.schema,
+            schema_name=input_data.schema_name,
             tables=[
                 TableInfo(
                     name=t.name,
@@ -230,7 +230,7 @@ class ToolHandler:
             return [TextContent(type="text", text=format_tool_output(error))]
 
         table_info = self.workspace_client.tables.get(
-            full_name=f"{input_data.catalog}.{input_data.schema}.{input_data.table}"
+            full_name=f"{input_data.catalog}.{input_data.schema_name}.{input_data.table}"
         )
         output = DetailedTableInfo(
             name=table_info.name,
@@ -326,7 +326,7 @@ class ToolHandler:
         try:
             # Retrieve schema information for the table
             table_info = self.workspace_client.tables.get(
-                full_name=f"{input_data.catalog}.{input_data.schema}.{input_data.table}"
+                full_name=f"{input_data.catalog}.{input_data.schema_name}.{input_data.table}"
             )
 
             # Build schema description text
@@ -341,7 +341,7 @@ class ToolHandler:
             # Construct Claude prompt
             prompt = f"""Convert this natural language question to a SQL query for Databricks Delta Lake.
 
-Table: {input_data.catalog}.{input_data.schema}.{input_data.table}
+Table: {input_data.catalog}.{input_data.schema_name}.{input_data.table}
 Description: {table_info.comment or 'No description'}
 
 Schema:

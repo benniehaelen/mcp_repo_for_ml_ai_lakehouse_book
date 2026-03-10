@@ -1,9 +1,9 @@
 """
 Pydantic models for Databricks MCP Server tool inputs and outputs
 """
-from typing import Optional, Literal, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator
 from enum import Enum
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, field_validator
 
 
 # ============================================================================
