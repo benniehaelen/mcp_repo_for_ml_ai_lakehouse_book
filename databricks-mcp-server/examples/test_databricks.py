@@ -25,11 +25,11 @@ try:
     )
     client = WorkspaceClient(config=config)
     
-    print("✓ Connected!")
+    print("[OK] Connected!")
     
     print("\n2. Listing catalogs...")
     catalogs = list(client.catalogs.list())
-    print(f"✓ Found {len(catalogs)} catalog(s):")
+    print(f"[OK] Found {len(catalogs)} catalog(s):")
     
     for catalog in catalogs:
         print(f"\n  Catalog: {catalog.name}")
@@ -45,11 +45,11 @@ try:
             print(f"      ... and {len(schemas) - 3} more")
     
     print("\n" + "="*80)
-    print("✓ SUCCESS! Databricks connection works!")
+    print("[OK] SUCCESS! Databricks connection works!")
     print("="*80)
     
 except Exception as e:
-    print(f"\n✗ ERROR: {e}")
+    print(f"\n[ERROR] {e}")
     print("\nTroubleshooting:")
     print("1. Check your .env file exists and has correct values")
     print("2. Verify DATABRICKS_HOST includes https://")

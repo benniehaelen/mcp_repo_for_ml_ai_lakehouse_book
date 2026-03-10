@@ -255,14 +255,38 @@ class ErrorOutput(BaseModel):
 # Helper functions to convert Pydantic models to JSON Schema
 # ============================================================================
 
+def _resolve_refs(obj: Any, defs: dict) -> Any:
+    """Recursively resolve $ref pointers against a $defs mapping."""
+    if isinstance(obj, dict):
+        if "$ref" in obj:
+            ref_path = obj["$ref"]  # e.g. "#/$defs/ChartType"
+            ref_name = ref_path.rsplit("/", 1)[-1]
+            if ref_name in defs:
+                # Merge any sibling keys (e.g. "description") with the resolved def
+                resolved = dict(defs[ref_name])
+                for k, v in obj.items():
+                    if k != "$ref":
+                        resolved[k] = v
+                return _resolve_refs(resolved, defs)
+        return {k: _resolve_refs(v, defs) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_resolve_refs(item, defs) for item in obj]
+    return obj
+
+
 def get_tool_input_schema(model: type[BaseModel]) -> dict:
     """Convert a Pydantic model to MCP tool input schema"""
     schema = model.model_json_schema()
-    
+    defs = schema.get("$defs", {})
+
+    properties = schema.get("properties", {})
+    if defs:
+        properties = _resolve_refs(properties, defs)
+
     # MCP expects inputSchema format
     return {
         "type": "object",
-        "properties": schema.get("properties", {}),
+        "properties": properties,
         "required": schema.get("required", []),
         "additionalProperties": False
     }

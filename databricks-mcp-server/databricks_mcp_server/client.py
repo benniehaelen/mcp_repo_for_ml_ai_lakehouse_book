@@ -110,7 +110,7 @@ class DatabricksMCPClient:
 
         result = await self.session.call_tool(
             "list_tables",
-            {"catalog": catalog, "schema": schema}
+            {"catalog": catalog, "schema_name": schema}
         )
         return json.loads(result.content[0].text)
 
@@ -121,7 +121,7 @@ class DatabricksMCPClient:
 
         result = await self.session.call_tool(
             "get_table_info",
-            {"catalog": catalog, "schema": schema, "table": table}
+            {"catalog": catalog, "schema_name": schema, "table": table}
         )
         return json.loads(result.content[0].text)
 
@@ -170,7 +170,7 @@ class DatabricksMCPClient:
         args = {
             "question": question,
             "catalog": catalog,
-            "schema": schema,
+            "schema_name": schema,
             "table": table
         }
         if warehouse_id:

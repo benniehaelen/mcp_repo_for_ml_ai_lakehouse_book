@@ -18,18 +18,16 @@ async def main():
         print("\nNote: Make sure ANTHROPIC_API_KEY is set in your environment")
         print()
         
-        # Configuration - update these with your actual table details
-        CATALOG = "main"
-        SCHEMA = "default"
-        TABLE = "your_table"
-        
+        # Configuration — uses the NYC Taxi trips sample dataset
+        CATALOG = "samples"
+        SCHEMA = "nyctaxi"
+        TABLE = "trips"
+
         # Example queries
         questions = [
-            "What are the top 10 records?",
-            "Show me the total count grouped by category",
-            "What is the average value?",
-            "Find records from the last 30 days",
-            "Which records have the highest revenue?",
+            "What are the top 10 pickup zip codes by number of trips?",
+            "What is the average fare amount and average trip distance?",
+            "Show me the top 5 most expensive trips by fare amount",
         ]
         
         print(f"Target table: {CATALOG}.{SCHEMA}.{TABLE}")
@@ -94,7 +92,7 @@ async def custom_query_example():
         print("Type your questions (or 'quit' to exit):\n")
         
         while True:
-            question = input("❓ Question: ").strip()
+            question = input("Question: ").strip()
             
             if question.lower() in ['quit', 'exit', 'q']:
                 break
@@ -103,7 +101,7 @@ async def custom_query_example():
                 continue
             
             try:
-                print("\n🔄 Processing...")
+                print("\nProcessing...")
                 result = await client.query_natural_language(
                     question=question,
                     catalog=catalog,
@@ -116,7 +114,7 @@ async def custom_query_example():
                 print("=" * 80 + "\n")
                 
             except Exception as e:
-                print(f"\n❌ Error: {e}\n")
+                print(f"\n[ERROR] {e}\n")
 
 
 if __name__ == "__main__":
