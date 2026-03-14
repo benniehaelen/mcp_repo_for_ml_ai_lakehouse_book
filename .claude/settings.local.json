@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(.venv/Scripts/pip.exe install:*)",
+      "Bash(.venv/Scripts/python.exe -c \"\nfrom databricks_mcp_server.client import DatabricksMCPClient\nc = DatabricksMCPClient\\(\\)\nprint\\('Client init OK'\\)\nprint\\('session:', c.session\\)\nprint\\('available_tools:', c.available_tools\\)\nprint\\('list_tools:', c.list_tools\\(\\)\\)\n\")",
+      "Bash(.venv/Scripts/python.exe -c \"\nimport py_compile\nfor f in ['examples/basic_usage.py', 'examples/natural_language_queries.py', 'examples/chart_examples.py', 'examples/test_databricks.py']:\n    py_compile.compile\\(f, doraise=True\\)\n    print\\(f'{f}: OK'\\)\n\")",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_basic.py -v 2>&1)",
+      "Bash(.venv/Scripts/python.exe -c \"\nfrom examples.basic_usage import main as bm\nfrom examples.natural_language_queries import main as nm\nfrom examples.chart_examples import main as cm\nprint\\('All example imports OK'\\)\n\")",
+      "Bash(.venv/Scripts/python.exe -c \"\nfrom examples.basic_usage import main as bm\nfrom examples.natural_language_queries import main as nm\nfrom examples.chart_examples import main as cm\nprint\\('All example imports OK'\\)\n\" && .venv/Scripts/python.exe -m pytest tests/test_basic.py -v 2>&1)",
+      "Bash(.venv/Scripts/python.exe examples/chart_examples.py 2>&1)",
+      "Bash(.venv/Scripts/python.exe -c \"\nfrom dotenv import load_dotenv\nimport os\nload_dotenv\\(\\)\nprint\\(f'DATABRICKS_HOST: {os.getenv\\(\\\\\"DATABRICKS_HOST\\\\\", \\\\\"NOT SET\\\\\"\\)}'\\)\nprint\\(f'DATABRICKS_WAREHOUSE_ID: {os.getenv\\(\\\\\"DATABRICKS_WAREHOUSE_ID\\\\\", \\\\\"NOT SET\\\\\"\\)}'\\)\n\" && .venv/Scripts/python.exe -m pytest tests/test_basic.py -v 2>&1)",
+      "Bash(.venv/Scripts/python.exe -c \"from dotenv import load_dotenv; import os; load_dotenv\\(\\); print\\(f'WAREHOUSE_ID: {os.getenv\\(\\\\\"DATABRICKS_WAREHOUSE_ID\\\\\"\\)}'\\)\")"
     ]
   }
 }

@@ -4,10 +4,9 @@ Python MCP Client for Databricks Unity Catalog
 
 This module defines a high-level asynchronous client that connects
 to a Databricks MCP (Model Context Protocol) server instance using
-the stdio transport. The client allows Python applications to
-programmatically interact with the MCP server's tools, resources,
-and prompts — such as listing catalogs, schemas, executing SQL,
-and generating charts.
+the stdio transport. The client dynamically discovers available tools
+at connect time and allows invoking them by name — no hard-coded
+tool methods required.
 
 Author: Bennie Haelen
 Date: 2025
@@ -33,10 +32,10 @@ logger = logging.getLogger(__name__)
 class DatabricksMCPClient:
     """
     High-level Python client for the Databricks MCP Server.
-    
-    Provides convenience methods to call MCP tools and access
-    resources or prompts, abstracting away lower-level session
-    management and I/O details.
+
+    Dynamically discovers available tools on connect and provides
+    a generic call_tool() method as well as attribute-style access
+    (e.g. client.list_catalogs()) for convenience.
     """
 
     def __init__(self, server_script_path: str = "databricks-mcp-server"):
@@ -49,9 +48,7 @@ class DatabricksMCPClient:
         """
         self.server_script_path = server_script_path
         self.session: Optional[ClientSession] = None
-        self._read_stream = None
-        self._write_stream = None
-        self._server_params = None
+        self.available_tools: Dict[str, Dict[str, Any]] = {}
 
     # -----------------------------------------------------------------------
     # Connection Management
@@ -62,168 +59,131 @@ class DatabricksMCPClient:
         Async context manager for connecting to the MCP server.
 
         Creates a subprocess running the Databricks MCP server via stdio
-        transport, then initializes an MCP session over it.
+        transport, then initializes an MCP session and discovers available
+        tools.
 
         Usage:
             async with DatabricksMCPClient().connect() as client:
-                await client.list_catalogs()
+                tools = client.list_tools()
+                result = await client.call_tool("list_catalogs")
         """
-        # Define parameters for launching the server subprocess
         server_params = StdioServerParameters(
             command="python",
             args=["-m", "databricks_mcp_server.server"],
             env=os.environ.copy()
         )
 
-        # Open stdio connection to MCP server and establish session
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
-                await session.initialize()  # perform MCP handshake
+                await session.initialize()
                 self.session = session
+
+                # Discover all tools exposed by the server
+                await self._discover_tools()
+                logger.info(
+                    f"Discovered {len(self.available_tools)} tools: "
+                    f"{', '.join(self.available_tools.keys())}"
+                )
+
                 yield self
-                # When context exits, automatically close session
                 self.session = None
+                self.available_tools = {}
+
+    async def _discover_tools(self):
+        """Fetch the tool list from the server and cache their definitions."""
+        tools_response = await self.session.list_tools()
+        self.available_tools = {
+            tool.name: {
+                "description": tool.description,
+                "inputSchema": tool.inputSchema,
+            }
+            for tool in tools_response.tools
+        }
+
+    # -----------------------------------------------------------------------
+    # Dynamic tool access via attribute syntax
+    # -----------------------------------------------------------------------
+    def __getattr__(self, name: str):
+        """
+        Allow attribute-style tool invocation, e.g. client.list_catalogs(**kwargs).
+
+        If 'name' matches a discovered tool, returns an async callable that
+        forwards keyword arguments to call_tool().
+        """
+        if name in self.available_tools:
+            async def _dynamic_tool_call(**kwargs):
+                return await self.call_tool(name, kwargs if kwargs else {})
+            return _dynamic_tool_call
+        raise AttributeError(f"'{type(self).__name__}' has no attribute '{name}'")
 
     # -----------------------------------------------------------------------
     # TOOL CALLS
     # -----------------------------------------------------------------------
-    async def list_catalogs(self) -> Dict[str, Any]:
-        """List all catalogs available in Databricks Unity Catalog."""
-        if not self.session:
-            raise RuntimeError("Not connected. Use 'async with client.connect():'")
+    def list_tools(self) -> List[Dict[str, Any]]:
+        """Return the list of tools discovered from the server."""
+        return [
+            {"name": name, **info}
+            for name, info in self.available_tools.items()
+        ]
 
-        result = await self.session.call_tool("list_catalogs", {})
-        return json.loads(result.content[0].text)
-
-    async def list_schemas(self, catalog: str) -> Dict[str, Any]:
-        """List all schemas within a specified catalog."""
-        if not self.session:
-            raise RuntimeError("Not connected. Use 'async with client.connect():'")
-
-        result = await self.session.call_tool("list_schemas", {"catalog": catalog})
-        return json.loads(result.content[0].text)
-
-    async def list_tables(self, catalog: str, schema: str) -> Dict[str, Any]:
-        """List all tables under a given catalog and schema."""
-        if not self.session:
-            raise RuntimeError("Not connected. Use 'async with client.connect():'")
-
-        result = await self.session.call_tool(
-            "list_tables",
-            {"catalog": catalog, "schema_name": schema}
-        )
-        return json.loads(result.content[0].text)
-
-    async def get_table_info(self, catalog: str, schema: str, table: str) -> Dict[str, Any]:
-        """Retrieve detailed metadata about a specific Unity Catalog table."""
-        if not self.session:
-            raise RuntimeError("Not connected. Use 'async with client.connect():'")
-
-        result = await self.session.call_tool(
-            "get_table_info",
-            {"catalog": catalog, "schema_name": schema, "table": table}
-        )
-        return json.loads(result.content[0].text)
-
-    async def execute_sql(self, query: str, warehouse_id: Optional[str] = None) -> Dict[str, Any]:
+    async def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Execute a SQL query using Databricks SQL Warehouse.
+        Invoke any MCP tool by name with the given arguments.
 
         Args:
-            query: SQL query string to execute.
-            warehouse_id: Optional warehouse identifier to use.
-        """
-        if not self.session:
-            raise RuntimeError("Not connected. Use 'async with client.connect():'")
-
-        args = {"query": query}
-        if warehouse_id:
-            args["warehouse_id"] = warehouse_id
-
-        result = await self.session.call_tool("execute_sql", args)
-        return json.loads(result.content[0].text)
-
-    async def query_natural_language(
-        self,
-        question: str,
-        catalog: str,
-        schema: str,
-        table: str,
-        warehouse_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Convert a natural language question into SQL and execute it.
-
-        Args:
-            question: Natural language question to be answered.
-            catalog: Databricks catalog containing the data.
-            schema: Databricks schema containing the data.
-            table: Optional table name to query.
-            warehouse_id: Optional warehouse ID for query execution.
+            name: Tool name as registered on the server.
+            arguments: Dictionary of tool input parameters.
 
         Returns:
-            A dictionary containing the generated SQL and query results.
+            Parsed JSON response from the tool, or a dict with
+            'response' / 'message' keys for non-JSON content.
         """
         if not self.session:
             raise RuntimeError("Not connected. Use 'async with client.connect():'")
 
-        args = {
-            "question": question,
-            "catalog": catalog,
-            "schema_name": schema,
-            "table": table
-        }
-        if warehouse_id:
-            args["warehouse_id"] = warehouse_id
+        if name not in self.available_tools:
+            available = ", ".join(self.available_tools.keys()) or "(none)"
+            raise ValueError(
+                f"Unknown tool '{name}'. Available tools: {available}"
+            )
 
-        result = await self.session.call_tool("query_natural_language", args)
+        result = await self.session.call_tool(name, arguments or {})
 
-        # Collect concatenated text from response
-        full_text = "".join([c.text for c in result.content if hasattr(c, "text")])
-        return {"response": full_text}
+        return self._parse_tool_result(result)
 
-    async def create_chart(
-        self,
-        query: str,
-        chart_type: str,
-        x_column: Optional[str] = None,
-        y_column: Optional[str] = None,
-        title: str = "Chart",
-        warehouse_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    @staticmethod
+    def _parse_tool_result(result) -> Dict[str, Any]:
         """
-        Create a chart visualization from query results.
+        Parse an MCP tool result into a dictionary.
 
-        Args:
-            query: SQL query to execute for chart data.
-            chart_type: Plotly chart type ("bar", "line", "pie", etc.).
-            x_column: Column for X-axis or categories.
-            y_column: Column for Y-axis values.
-            title: Optional chart title.
-            warehouse_id: Optional SQL warehouse for query execution.
-
-        Returns:
-            A dictionary containing chart metadata and optional image data.
+        Handles JSON text responses, multi-part text, and embedded
+        image content.
         """
-        if not self.session:
-            raise RuntimeError("Not connected. Use 'async with client.connect():'")
+        if not result.content:
+            return {}
 
-        args = {"query": query, "chart_type": chart_type, "title": title}
-        if x_column:
-            args["x_column"] = x_column
-        if y_column:
-            args["y_column"] = y_column
-        if warehouse_id:
-            args["warehouse_id"] = warehouse_id
-
-        result = await self.session.call_tool("create_chart", args)
-
-        # Parse response and include any embedded image data
-        response = {"message": result.content[0].text if result.content else ""}
+        # Check for embedded image data (e.g. from create_chart)
+        response = {}
+        has_image = False
         for content in result.content:
             if hasattr(content, "data") and hasattr(content, "mimeType"):
                 response["image_data"] = content.data
                 response["mime_type"] = content.mimeType
+                has_image = True
+
+        # Try to parse the first text content as JSON
+        text_parts = [c.text for c in result.content if hasattr(c, "text")]
+        if text_parts:
+            full_text = "".join(text_parts)
+            try:
+                parsed = json.loads(full_text)
+                if has_image:
+                    response["message"] = full_text
+                    return response
+                return parsed
+            except json.JSONDecodeError:
+                response["response"] = full_text
+                return response
 
         return response
 
@@ -247,7 +207,7 @@ class DatabricksMCPClient:
         ]
 
     async def read_resource(self, uri: str) -> Dict[str, Any]:
-        """Read a resource’s contents by URI."""
+        """Read a resource's contents by URI."""
         if not self.session:
             raise RuntimeError("Not connected. Use 'async with client.connect():'")
 
@@ -307,8 +267,18 @@ async def example_usage():
     async with client.connect():
         print("Connected to Databricks MCP Server\n")
 
-        # Example: List catalogs
-        print("=== Catalogs ===")
+        # Show dynamically discovered tools
+        print("=== Discovered Tools ===")
+        for tool in client.list_tools():
+            print(f"- {tool['name']}: {tool['description']}")
+
+        # Example: Call tools dynamically via call_tool()
+        print("\n=== Catalogs (via call_tool) ===")
+        catalogs = await client.call_tool("list_catalogs")
+        print(json.dumps(catalogs, indent=2))
+
+        # Example: Call tools via attribute-style access
+        print("\n=== Catalogs (via attribute access) ===")
         catalogs = await client.list_catalogs()
         print(json.dumps(catalogs, indent=2))
 
@@ -323,20 +293,6 @@ async def example_usage():
         prompts = await client.list_prompts()
         for prompt in prompts:
             print(f"- {prompt['name']}: {prompt['description']}")
-
-        # Uncomment the examples below when you have a SQL warehouse configured
-        # print("\n=== SQL Query ===")
-        # result = await client.execute_sql("SELECT * FROM main.default.my_table LIMIT 10")
-        # print(json.dumps(result, indent=2))
-
-        # print("\n=== Natural Language Query ===")
-        # result = await client.query_natural_language(
-        #     "What are the top 5 records?",
-        #     "main",
-        #     "default",
-        #     "my_table"
-        # )
-        # print(result['response'])
 
 
 # Run example when executed directly

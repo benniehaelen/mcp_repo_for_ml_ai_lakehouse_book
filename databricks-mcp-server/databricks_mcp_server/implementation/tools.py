@@ -24,6 +24,7 @@ Author: Bennie Haelen
 Date: 2025
 """
 
+import json
 import logging
 import os
 import base64
@@ -371,7 +372,13 @@ Provide only the SQL query without any explanation or markdown formatting."""
             )
             exec_result = await self.execute_sql(exec_input)
 
-            exec_output = ExecuteSQLOutput.model_validate_json(exec_result[0].text)
+            # Check if execute_sql returned an error
+            result_json = json.loads(exec_result[0].text)
+            if "error" in result_json:
+                error = ErrorOutput(error=f"SQL execution failed: {result_json['error']}")
+                return [TextContent(type="text", text=format_tool_output(error))]
+
+            exec_output = ExecuteSQLOutput.model_validate(result_json)
 
             # Combine the SQL and execution result
             output = QueryNaturalLanguageOutput(
@@ -398,7 +405,13 @@ Provide only the SQL query without any explanation or markdown formatting."""
             )
             result = await self.execute_sql(exec_input)
 
-            exec_output = ExecuteSQLOutput.model_validate_json(result[0].text)
+            # Check if execute_sql returned an error
+            result_json = json.loads(result[0].text)
+            if "error" in result_json:
+                error = ErrorOutput(error=f"SQL execution failed: {result_json['error']}")
+                return [TextContent(type="text", text=format_tool_output(error))]
+
+            exec_output = ExecuteSQLOutput.model_validate(result_json)
 
             # Validate that data exists
             if exec_output.status != "success" or not exec_output.data:

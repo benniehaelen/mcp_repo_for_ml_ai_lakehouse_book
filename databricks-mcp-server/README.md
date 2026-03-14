@@ -1,16 +1,15 @@
 # Databricks Unity Catalog MCP Server
 
-A comprehensive Model Context Protocol (MCP) server for Databricks Unity Catalog that enables:
+A Model Context Protocol (MCP) server for Databricks Unity Catalog that enables:
 - **Metadata exploration** of catalogs, schemas, and tables
 - **SQL query execution** on Delta Lake tables
 - **Natural language queries** powered by Claude
 - **Data visualization** with Plotly charts
-- **Streaming progress updates** with Server-Sent Events (SSE)
 - **Multiple client interfaces** (Python, Databricks Notebooks)
 
 ## Features
 
-### 🛠️ MCP Tools
+### MCP Tools
 - `list_catalogs` - List all Unity Catalogs
 - `list_schemas` - List schemas in a catalog
 - `list_tables` - List tables in a schema
@@ -19,12 +18,12 @@ A comprehensive Model Context Protocol (MCP) server for Databricks Unity Catalog
 - `query_natural_language` - Convert natural language to SQL and execute
 - `create_chart` - Generate Plotly charts from query results (bar, line, scatter, pie, histogram, box)
 
-### 📚 MCP Resources
+### MCP Resources
 - `databricks://catalogs` - List of all catalogs
 - `databricks://catalog/{name}` - Schemas in a specific catalog
 - `databricks://table/{catalog}/{schema}/{table}` - Detailed table information
 
-### 💡 MCP Prompts
+### MCP Prompts
 - `query-table` - Generate SQL queries for specific tables
 - `analyze-data` - Analyze query results and provide insights
 - `explore-catalog` - Explore Unity Catalog structure
@@ -34,20 +33,22 @@ A comprehensive Model Context Protocol (MCP) server for Databricks Unity Catalog
 ### Using UV (Recommended)
 
 ```bash
-# Clone or create project
 cd databricks-mcp-server
 
-# Install dependencies
+# Install package and dependencies
 uv pip install -e .
-
-# Or install directly from requirements
-uv pip install mcp databricks-sdk plotly pandas anthropic python-dotenv httpx
 ```
 
 ### Using pip
 
 ```bash
 pip install -e .
+```
+
+Plotly chart export requires `kaleido`:
+
+```bash
+pip install kaleido
 ```
 
 ## Configuration
@@ -69,15 +70,15 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 ### Getting Databricks Credentials
 
 1. **Host**: Your Databricks workspace URL
-2. **Token**: Generate a personal access token from User Settings → Access Tokens
-3. **Warehouse ID**: Found in SQL Warehouses → Select warehouse → Connection Details
+2. **Token**: Generate a personal access token from User Settings > Access Tokens
+3. **Warehouse ID**: Found in SQL Warehouses > Select warehouse > Connection Details
 
 ## Usage
 
 ### 1. Running the MCP Server
 
 ```bash
-# Using the installed script
+# Using the installed entry point
 databricks-mcp-server
 
 # Or run directly
@@ -88,46 +89,55 @@ The server communicates via stdio and implements the MCP protocol.
 
 ### 2. Python Client
 
+The client dynamically discovers available tools from the server at connect time. Use `call_tool()` to invoke any tool by name, or use attribute-style access for convenience.
+
 ```python
 import asyncio
+from dotenv import load_dotenv
 from databricks_mcp_server.client import DatabricksMCPClient
+
+load_dotenv()
 
 async def main():
     client = DatabricksMCPClient()
-    
+
     async with client.connect():
+        # See what tools the server exposes
+        for tool in client.list_tools():
+            print(f"- {tool['name']}: {tool['description']}")
+
         # List catalogs
-        catalogs = await client.list_catalogs()
+        catalogs = await client.call_tool("list_catalogs")
         print(catalogs)
-        
-        # List schemas
-        schemas = await client.list_schemas("main")
+
+        # List schemas in a catalog
+        schemas = await client.call_tool("list_schemas", {"catalog": "samples"})
         print(schemas)
-        
-        # Execute SQL
-        result = await client.execute_sql(
-            "SELECT * FROM main.default.my_table LIMIT 10"
-        )
+
+        # Execute SQL against the NYC taxi dataset
+        result = await client.call_tool("execute_sql", {
+            "query": "SELECT pickup_zip, COUNT(*) as trips FROM samples.nyctaxi.trips GROUP BY pickup_zip ORDER BY trips DESC LIMIT 5"
+        })
         print(result)
-        
+
         # Natural language query
-        result = await client.query_natural_language(
-            question="What are the top 5 records by revenue?",
-            catalog="main",
-            schema="default",
-            table="sales"
-        )
-        print(result['response'])
-        
-        # Create a chart
-        chart = await client.create_chart(
-            query="SELECT category, SUM(revenue) as total FROM main.default.sales GROUP BY category",
-            chart_type="bar",
-            x_column="category",
-            y_column="total",
-            title="Revenue by Category"
-        )
-        
+        result = await client.call_tool("query_natural_language", {
+            "question": "What are the top 5 pickup zip codes by number of trips?",
+            "catalog": "samples",
+            "schema_name": "nyctaxi",
+            "table": "trips",
+        })
+        print(result)
+
+        # Create a bar chart
+        chart = await client.call_tool("create_chart", {
+            "query": "SELECT pickup_zip, COUNT(*) as trips FROM samples.nyctaxi.trips WHERE pickup_zip IS NOT NULL GROUP BY pickup_zip ORDER BY trips DESC LIMIT 10",
+            "chart_type": "bar",
+            "x_column": "pickup_zip",
+            "y_column": "trips",
+            "title": "Top 10 Pickup Zip Codes",
+        })
+
         # Save chart image
         if 'image_data' in chart:
             import base64
@@ -135,6 +145,13 @@ async def main():
                 f.write(base64.b64decode(chart['image_data']))
 
 asyncio.run(main())
+```
+
+Tools can also be called via attribute-style access (resolved dynamically from the server):
+
+```python
+catalogs = await client.list_catalogs()
+schemas = await client.list_schemas(catalog="samples")
 ```
 
 ### 3. Databricks Notebook Client
@@ -158,26 +175,26 @@ catalogs_df = client.list_catalogs()
 display(catalogs_df)
 
 # Execute SQL
-df = client.execute_sql("SELECT * FROM main.default.table LIMIT 10")
+df = client.execute_sql("SELECT * FROM samples.nyctaxi.trips LIMIT 10")
 display(df)
 
 # Natural language query
 result = client.query_natural_language(
-    question="Show me top customers by order count",
-    catalog="main",
-    schema="default",
-    table="orders"
+    question="What are the top 10 pickup zip codes by trip count?",
+    catalog="samples",
+    schema="nyctaxi",
+    table="trips"
 )
 print(f"Generated SQL: {result['sql']}")
 display(result['data'])
 
 # Create chart
 fig = client.create_chart(
-    query="SELECT date, revenue FROM main.default.sales",
-    chart_type="line",
-    x="date",
-    y="revenue",
-    title="Daily Revenue"
+    query="SELECT pickup_zip, COUNT(*) as trips FROM samples.nyctaxi.trips WHERE pickup_zip IS NOT NULL GROUP BY pickup_zip ORDER BY trips DESC LIMIT 10",
+    chart_type="bar",
+    x="pickup_zip",
+    y="trips",
+    title="Top 10 Pickup Zip Codes"
 )
 fig.show()
 ```
@@ -186,41 +203,28 @@ fig.show()
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    MCP Server (stdio)                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │   Tools    │  │ Resources  │  │  Prompts   │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
+│                    MCP Server (stdio)                       │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
+│  │   Tools    │  │ Resources  │  │  Prompts   │           │
+│  └────────────┘  └────────────┘  └────────────┘           │
 └─────────────────────────────────────────────────────────────┘
                           │
-                          ├─── Python Client (asyncio)
+                          ├─── Python Client (asyncio, dynamic tool discovery)
                           │
                           └─── Notebook Client (direct SDK)
-                          
+
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
-│              Databricks Unity Catalog                        │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │  Catalogs  │  │  Schemas   │  │   Tables   │            │
-│  └────────────┘  └────────────┘  └────────────┘            │
+│              Databricks Unity Catalog                       │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
+│  │  Catalogs  │  │  Schemas   │  │   Tables   │           │
+│  └────────────┘  └────────────┘  └────────────┘           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Advanced Features
+## Chart Types
 
-### Streaming Progress (Server-Sent Events)
-
-The MCP server supports streaming progress updates for long-running operations:
-
-```python
-# Progress updates are automatically streamed for:
-# - Large query executions
-# - Natural language query processing
-# - Chart generation with large datasets
-```
-
-### Custom Chart Types
-
-Supported chart types:
+Supported chart types via the `create_chart` tool:
 - `bar` - Bar charts for categorical comparisons
 - `line` - Line charts for trends over time
 - `scatter` - Scatter plots for correlations
@@ -228,76 +232,23 @@ Supported chart types:
 - `histogram` - Distribution analysis
 - `box` - Box plots for statistical summaries
 
-### Batch Operations
-
-Process multiple tables efficiently:
-
-```python
-# Using the notebook client
-tables = [
-    ("main", "default", "table1"),
-    ("main", "default", "table2"),
-    ("main", "sales", "orders")
-]
-
-for catalog, schema, table in tables:
-    df = client.execute_sql(f"SELECT * FROM {catalog}.{schema}.{table} LIMIT 100")
-    print(f"Processed {catalog}.{schema}.{table}: {len(df)} rows")
-```
-
 ## Examples
 
-### Example 1: Explore Catalog Structure
+Working examples are in the `examples/` directory:
 
-```python
-async def explore():
-    async with client.connect():
-        # List all resources
-        resources = await client.list_resources()
-        for r in resources:
-            print(f"{r['name']}: {r['uri']}")
-        
-        # Read catalog resource
-        catalogs = await client.read_resource("databricks://catalogs")
-        print(catalogs)
-```
+- **`basic_usage.py`** - Lists catalogs, schemas, tables, resources, and prompts
+- **`natural_language_queries.py`** - NL-to-SQL queries against the NYC taxi dataset
+- **`chart_examples.py`** - Generates all 6 chart types plus a multi-chart dashboard
+- **`test_databricks.py`** - Direct Databricks SDK connection test
 
-### Example 2: Query with Natural Language
+Run any example:
 
-```python
-async def nl_query():
-    async with client.connect():
-        result = await client.query_natural_language(
-            question="What were our top 10 products by revenue last month?",
-            catalog="main",
-            schema="sales",
-            table="product_sales"
-        )
-        print(result['response'])
-```
-
-### Example 3: Create Dashboard
-
-```python
-async def create_dashboard():
-    async with client.connect():
-        # Revenue by category
-        chart1 = await client.create_chart(
-            query="SELECT category, SUM(revenue) as total FROM main.sales.orders GROUP BY category",
-            chart_type="pie",
-            x_column="category",
-            y_column="total",
-            title="Revenue by Category"
-        )
-        
-        # Daily trends
-        chart2 = await client.create_chart(
-            query="SELECT date, COUNT(*) as orders FROM main.sales.orders GROUP BY date ORDER BY date",
-            chart_type="line",
-            x_column="date",
-            y_column="orders",
-            title="Daily Orders"
-        )
+```bash
+python examples/basic_usage.py
+python examples/chart_examples.py
+python examples/chart_examples.py --dashboard
+python examples/natural_language_queries.py
+python examples/natural_language_queries.py --interactive
 ```
 
 ## Troubleshooting
@@ -305,9 +256,10 @@ async def create_dashboard():
 ### Common Issues
 
 1. **Connection Error**: Verify `DATABRICKS_HOST` and `DATABRICKS_TOKEN` are correct
-2. **Warehouse Not Found**: Check `DATABRICKS_WAREHOUSE_ID` is valid and warehouse is running
+2. **Warehouse Not Found**: Check `DATABRICKS_WAREHOUSE_ID` is valid and the warehouse is running
 3. **Permission Denied**: Ensure your token has access to Unity Catalog and SQL warehouses
 4. **NL Queries Failing**: Verify `ANTHROPIC_API_KEY` is set correctly
+5. **Charts not rendering**: Install `kaleido` (`pip install kaleido`)
 
 ### Debug Mode
 
