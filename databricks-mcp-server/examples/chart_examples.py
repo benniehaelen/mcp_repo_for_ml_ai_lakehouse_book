@@ -64,7 +64,6 @@ async def main():
                 "title": "Top 10 Pickup Zip Codes by Trip Count",
             })
             await save_chart(chart, "output/bar_chart.png")
-            print(f"  Message: {chart.get('message', 'Done')}")
         except Exception as e:
             print(f"  Error: {e}")
 
@@ -86,7 +85,6 @@ async def main():
                 "title": "Daily Trip Count",
             })
             await save_chart(chart, "output/line_chart.png")
-            print(f"  Message: {chart.get('message', 'Done')}")
         except Exception as e:
             print(f"  Error: {e}")
 
@@ -109,7 +107,6 @@ async def main():
                 "title": "Trip Distribution by Top 5 Pickup Zips",
             })
             await save_chart(chart, "output/pie_chart.png")
-            print(f"  Message: {chart.get('message', 'Done')}")
         except Exception as e:
             print(f"  Error: {e}")
 
@@ -130,7 +127,6 @@ async def main():
                 "title": "Trip Distance vs Fare Amount",
             })
             await save_chart(chart, "output/scatter_plot.png")
-            print(f"  Message: {chart.get('message', 'Done')}")
         except Exception as e:
             print(f"  Error: {e}")
 
@@ -150,7 +146,6 @@ async def main():
                 "title": "Fare Amount Distribution",
             })
             await save_chart(chart, "output/histogram.png")
-            print(f"  Message: {chart.get('message', 'Done')}")
         except Exception as e:
             print(f"  Error: {e}")
 
@@ -170,7 +165,6 @@ async def main():
                 "title": "Trip Distance Distribution",
             })
             await save_chart(chart, "output/box_plot.png")
-            print(f"  Message: {chart.get('message', 'Done')}")
         except Exception as e:
             print(f"  Error: {e}")
 
