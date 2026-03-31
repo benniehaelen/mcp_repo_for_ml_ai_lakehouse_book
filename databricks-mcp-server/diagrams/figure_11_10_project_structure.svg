@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 620" font-family="Consolas, 'Courier New', monospace">
+
+  <style>
+    .dir  { font-weight: bold; fill: #1e293b; font-size: 13px; }
+    .file { fill: #334155; font-size: 12px; }
+    .desc { fill: #64748b; font-size: 11px; font-family: Helvetica, Arial, sans-serif; }
+    .tree { fill: #94a3b8; font-size: 12px; }
+  </style>
+
+  <!-- Title -->
+  <text x="280" y="24" text-anchor="middle" font-size="13" font-weight="bold" fill="#1e293b" font-family="Helvetica, Arial, sans-serif">Project Structure</text>
+
+  <!-- Tree lines rendered as text for clean monospace alignment -->
+
+  <text x="20" y="56" class="dir">databricks-mcp-server/</text>
+
+  <!-- databricks_mcp_server package -->
+  <text x="20" y="80"  class="tree">├──</text><text x="56" y="80"  class="dir">databricks_mcp_server/</text>
+  <text x="20" y="102" class="tree">│   ├──</text><text x="76" y="102" class="file">__init__.py</text><text x="280" y="102" class="desc">Package exports</text>
+  <text x="20" y="122" class="tree">│   ├──</text><text x="76" y="122" class="file">server.py</text><text x="280" y="122" class="desc">MCP server core, handler registration</text>
+  <text x="20" y="142" class="tree">│   ├──</text><text x="76" y="142" class="file">client.py</text><text x="280" y="142" class="desc">Async Python client, dynamic discovery</text>
+  <text x="20" y="162" class="tree">│   ├──</text><text x="76" y="162" class="file">pydantic_models.py</text><text x="280" y="162" class="desc">Input/output models, schema helpers</text>
+  <text x="20" y="182" class="tree">│   ├──</text><text x="76" y="182" class="file">progress.py</text><text x="280" y="182" class="desc">ProgressReporter for notifications</text>
+
+  <!-- implementation sub-package -->
+  <text x="20" y="206" class="tree">│   └──</text><text x="76" y="206" class="dir">implementation/</text>
+  <text x="20" y="228" class="tree">│       ├──</text><text x="96" y="228" class="file">__init__.py</text><text x="280" y="228" class="desc">Handler exports</text>
+  <text x="20" y="248" class="tree">│       ├──</text><text x="96" y="248" class="file">tools.py</text><text x="280" y="248" class="desc">7 tools: catalog, SQL, NL, charts</text>
+  <text x="20" y="268" class="tree">│       ├──</text><text x="96" y="268" class="file">resources.py</text><text x="280" y="268" class="desc">3 resource URI patterns</text>
+  <text x="20" y="288" class="tree">│       └──</text><text x="96" y="288" class="file">prompts.py</text><text x="280" y="288" class="desc">3 prompt templates</text>
+
+  <!-- examples -->
+  <text x="20" y="318" class="tree">├──</text><text x="56" y="318" class="dir">examples/</text>
+  <text x="20" y="340" class="tree">│   ├──</text><text x="76" y="340" class="file">basic_usage.py</text><text x="280" y="340" class="desc">Catalogs, schemas, tables</text>
+  <text x="20" y="360" class="tree">│   ├──</text><text x="76" y="360" class="file">chart_examples.py</text><text x="280" y="360" class="desc">6 chart types + dashboard</text>
+  <text x="20" y="380" class="tree">│   ├──</text><text x="76" y="380" class="file">natural_language_queries.py</text><text x="280" y="380" class="desc">NL-to-SQL via Claude</text>
+  <text x="20" y="400" class="tree">│   ├──</text><text x="76" y="400" class="file">resource_examples.py</text><text x="280" y="400" class="desc">MCP resource layer</text>
+  <text x="20" y="420" class="tree">│   └──</text><text x="76" y="420" class="file">prompt_examples.py</text><text x="280" y="420" class="desc">MCP prompt templates</text>
+
+  <!-- tests -->
+  <text x="20" y="450" class="tree">├──</text><text x="56" y="450" class="dir">tests/</text>
+  <text x="20" y="472" class="tree">│   └──</text><text x="76" y="472" class="file">test_basic.py</text><text x="280" y="472" class="desc">Unit tests</text>
+
+  <!-- config files -->
+  <text x="20" y="502" class="tree">├──</text><text x="56" y="502" class="file">pyproject.toml</text><text x="280" y="502" class="desc">Dependencies, entry points</text>
+  <text x="20" y="522" class="tree">├──</text><text x="56" y="522" class="file">.env.example</text><text x="280" y="522" class="desc">Environment variable template</text>
+  <text x="20" y="542" class="tree">├──</text><text x="56" y="542" class="file">setup.sh</text><text x="280" y="542" class="desc">Automated setup script</text>
+  <text x="20" y="562" class="tree">├──</text><text x="56" y="562" class="file">README.md</text><text x="280" y="562" class="desc">Project documentation</text>
+  <text x="20" y="582" class="tree">└──</text><text x="56" y="582" class="file">LICENSE</text><text x="280" y="582" class="desc">MIT license</text>
+
+  <!-- Highlight boxes for the three layers -->
+  <rect x="60" y="88" width="490" height="210" rx="4" fill="none" stroke="#4f46e5" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+  <rect x="60" y="306" width="490" height="124" rx="4" fill="none" stroke="#16a34a" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+
+</svg>
