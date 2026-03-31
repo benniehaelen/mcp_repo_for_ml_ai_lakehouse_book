@@ -31,6 +31,7 @@ Date: 2025
 
 import os
 import asyncio
+import argparse
 import logging
 from typing import Any, Optional, Sequence
 
@@ -43,6 +44,7 @@ from pydantic import ValidationError
 # MCP protocol imports
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import (
     Resource,
     Tool,
@@ -326,6 +328,44 @@ class DatabricksMCPServer:
                 self.app.create_initialization_options(),
             )
 
+    async def run_http(self, host: str = "0.0.0.0", port: int = 8000):
+        """
+        Launch the MCP server using Streamable HTTP transport.
+
+        Args:
+            host: Bind address (default: 0.0.0.0)
+            port: Listen port (default: 8000)
+        """
+        from starlette.applications import Starlette
+        from starlette.routing import Mount
+        import uvicorn
+
+        self.initialize_clients()
+
+        logger.info("=" * 60)
+        logger.info("Databricks MCP Server (Streamable HTTP)")
+        logger.info(f"Listening on http://{host}:{port}/mcp")
+        logger.info("=" * 60)
+
+        session_manager = StreamableHTTPSessionManager(
+            app=self.app,
+        )
+
+        starlette_app = Starlette(
+            routes=[Mount("/mcp", app=session_manager.handle_request)],
+        )
+
+        config = uvicorn.Config(
+            starlette_app,
+            host=host,
+            port=port,
+            log_level="info",
+        )
+        uvicorn_server = uvicorn.Server(config)
+
+        async with session_manager.run():
+            await uvicorn_server.serve()
+
 
 # ---------------------------------------------------------------------------
 # Entry Point
@@ -334,15 +374,32 @@ def main():
     """
     Application entry point.
     Loads environment variables, creates the MCP server, and starts execution.
+    Supports --transport stdio (default) or --transport http.
     """
+    from pathlib import Path
     from dotenv import load_dotenv
 
-    # Load .env file
-    load_dotenv()
+    # Load .env file from the project root (parent of the package directory)
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    load_dotenv(dotenv_path=env_path)
+
+    parser = argparse.ArgumentParser(description="Databricks MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="Transport protocol (default: stdio)",
+    )
+    parser.add_argument("--host", default="0.0.0.0", help="HTTP bind address (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8000, help="HTTP port (default: 8000)")
+    args = parser.parse_args()
 
     # Create and execute the server instance
     server = DatabricksMCPServer()
-    asyncio.run(server.run())
+    if args.transport == "http":
+        asyncio.run(server.run_http(args.host, args.port))
+    else:
+        asyncio.run(server.run())
 
 
 # ---------------------------------------------------------------------------

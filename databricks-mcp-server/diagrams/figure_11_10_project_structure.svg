@@ -17,7 +17,7 @@
   <!-- databricks_mcp_server package -->
   <text x="20" y="80"  class="tree">├──</text><text x="56" y="80"  class="dir">databricks_mcp_server/</text>
   <text x="20" y="102" class="tree">│   ├──</text><text x="76" y="102" class="file">__init__.py</text><text x="280" y="102" class="desc">Package exports</text>
-  <text x="20" y="122" class="tree">│   ├──</text><text x="76" y="122" class="file">server.py</text><text x="280" y="122" class="desc">MCP server core, handler registration</text>
+  <text x="20" y="122" class="tree">│   ├──</text><text x="76" y="122" class="file">server.py</text><text x="280" y="122" class="desc">MCP server core, stdio + HTTP transport</text>
   <text x="20" y="142" class="tree">│   ├──</text><text x="76" y="142" class="file">client.py</text><text x="280" y="142" class="desc">Async Python client, dynamic discovery</text>
   <text x="20" y="162" class="tree">│   ├──</text><text x="76" y="162" class="file">pydantic_models.py</text><text x="280" y="162" class="desc">Input/output models, schema helpers</text>
   <text x="20" y="182" class="tree">│   ├──</text><text x="76" y="182" class="file">progress.py</text><text x="280" y="182" class="desc">ProgressReporter for notifications</text>

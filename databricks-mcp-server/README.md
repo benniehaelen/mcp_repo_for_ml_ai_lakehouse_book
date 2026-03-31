@@ -7,6 +7,7 @@ A Model Context Protocol (MCP) server for Databricks Unity Catalog that enables:
 - **Data visualization** with Plotly charts
 - **Multiple client interfaces** (Python, Databricks Notebooks)
 - **Progress notifications** for long-running operations via MCP `notifications/progress`
+- **Dual transport** — stdio (default) or Streamable HTTP for remote/multi-client access
 
 ## Features
 
@@ -94,6 +95,8 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 
 ### 1. Running the MCP Server
 
+#### Stdio transport (default)
+
 ```bash
 # Using the installed entry point
 databricks-mcp-server
@@ -103,6 +106,18 @@ python -m databricks_mcp_server.server
 ```
 
 The server communicates via stdio and implements the MCP protocol.
+
+#### Streamable HTTP transport
+
+```bash
+# Start the server over HTTP (default: 0.0.0.0:8000)
+databricks-mcp-server --transport http
+
+# Custom host and port
+databricks-mcp-server --transport http --host 127.0.0.1 --port 9000
+```
+
+Clients connect to the `/mcp` endpoint (e.g., `http://localhost:8000/mcp`). The Streamable HTTP transport supports multiple concurrent client sessions.
 
 ### 2. Python Client
 
@@ -175,7 +190,7 @@ schemas = await client.list_schemas(catalog="samples")
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    MCP Server (stdio)                       │
+│              MCP Server (stdio or Streamable HTTP)          │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
 │  │   Tools    │  │ Resources  │  │  Prompts   │           │
 │  └────────────┘  └────────────┘  └────────────┘           │
@@ -184,6 +199,8 @@ schemas = await client.list_schemas(catalog="samples")
 │                  │ (notifications/    │                     │
 │                  │  progress)         │                     │
 │                  └────────────────────┘                     │
+│                                                             │
+│  Transport: stdio (default) or Streamable HTTP (/mcp)      │
 └─────────────────────────────────────────────────────────────┘
                           │
                           └─── Python Client (asyncio, dynamic tool discovery)
