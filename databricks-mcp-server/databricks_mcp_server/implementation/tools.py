@@ -36,6 +36,7 @@ from databricks.sdk import WorkspaceClient
 from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
 
 # Pydantic models, IO schemas, and helpers
+from databricks_mcp_server.progress import ProgressReporter
 from databricks_mcp_server.pydantic_models import (
     # Input models
     ListCatalogsInput,
@@ -258,7 +259,11 @@ class ToolHandler:
         )
         return [TextContent(type="text", text=format_tool_output(output))]
 
-    async def execute_sql(self, input_data: ExecuteSQLInput) -> Sequence[TextContent]:
+    async def execute_sql(
+        self,
+        input_data: ExecuteSQLInput,
+        progress: ProgressReporter | None = None,
+    ) -> Sequence[TextContent]:
         """
         Execute a SQL query on Databricks using a specified warehouse.
 
@@ -272,6 +277,8 @@ class ToolHandler:
             error = ErrorOutput(error="Databricks client not initialized")
             return [TextContent(type="text", text=format_tool_output(error))]
 
+        progress = progress or ProgressReporter()
+
         try:
             # Get warehouse ID from input or environment
             warehouse_id = input_data.warehouse_id or os.getenv("DATABRICKS_WAREHOUSE_ID")
@@ -282,9 +289,19 @@ class ToolHandler:
                 )
                 return [TextContent(type="text", text=format_tool_output(error))]
 
+            # --- Progress: query submitted ---
+            await progress.report(
+                "Executing query against warehouse...", progress=1, total=3
+            )
+
             # Execute SQL statement
             response = self.workspace_client.statement_execution.execute_statement(
                 warehouse_id=warehouse_id, statement=input_data.query, wait_timeout="30s"
+            )
+
+            # --- Progress: processing results ---
+            await progress.report(
+                "Processing result set...", progress=2, total=3
             )
 
             # Transform Databricks response → pandas DataFrame
@@ -304,6 +321,12 @@ class ToolHandler:
                     message="Query executed successfully but returned no data",
                 )
 
+            # --- Progress: complete ---
+            row_info = f", {output.row_count} rows" if output.row_count else ""
+            await progress.report(
+                f"Query complete{row_info}", progress=3, total=3
+            )
+
             return [TextContent(type="text", text=format_tool_output(output))]
 
         except Exception as e:
@@ -312,7 +335,9 @@ class ToolHandler:
             return [TextContent(type="text", text=format_tool_output(error))]
 
     async def query_natural_language(
-        self, input_data: QueryNaturalLanguageInput
+        self,
+        input_data: QueryNaturalLanguageInput,
+        progress: ProgressReporter | None = None,
     ) -> Sequence[TextContent]:
         """
         Convert a natural language question into SQL using Anthropic Claude,
@@ -324,7 +349,14 @@ class ToolHandler:
             )
             return [TextContent(type="text", text=format_tool_output(error))]
 
+        progress = progress or ProgressReporter()
+
         try:
+            # --- Progress: fetching schema ---
+            await progress.report(
+                "Fetching table schema from Unity Catalog...", progress=1, total=5
+            )
+
             # Retrieve schema information for the table
             table_info = self.workspace_client.tables.get(
                 full_name=f"{input_data.catalog}.{input_data.schema_name}.{input_data.table}"
@@ -352,6 +384,11 @@ Question: {input_data.question}
 
 Provide only the SQL query without any explanation or markdown formatting."""
 
+            # --- Progress: generating SQL ---
+            await progress.report(
+                "Generating SQL via Claude...", progress=2, total=5
+            )
+
             # Call Anthropic API
             message = self.anthropic_client.messages.create(
                 model="claude-sonnet-4-20250514",
@@ -366,11 +403,21 @@ Provide only the SQL query without any explanation or markdown formatting."""
                 lines = sql_query.split("\n")
                 sql_query = "\n".join(lines[1:-1]) if len(lines) > 2 else sql_query
 
+            # --- Progress: executing SQL ---
+            await progress.report(
+                "Executing generated SQL against warehouse...", progress=3, total=5
+            )
+
             # Execute the generated SQL query
             exec_input = ExecuteSQLInput(
                 query=sql_query, warehouse_id=input_data.warehouse_id
             )
             exec_result = await self.execute_sql(exec_input)
+
+            # --- Progress: processing results ---
+            await progress.report(
+                "Processing query results...", progress=4, total=5
+            )
 
             # Check if execute_sql returned an error
             result_json = json.loads(exec_result[0].text)
@@ -384,6 +431,12 @@ Provide only the SQL query without any explanation or markdown formatting."""
             output = QueryNaturalLanguageOutput(
                 generated_sql=sql_query, execution_result=exec_output
             )
+
+            # --- Progress: complete ---
+            await progress.report(
+                "Natural language query complete", progress=5, total=5
+            )
+
             return [TextContent(type="text", text=format_tool_output(output))]
 
         except Exception as e:
@@ -392,13 +445,22 @@ Provide only the SQL query without any explanation or markdown formatting."""
             return [TextContent(type="text", text=format_tool_output(error))]
 
     async def create_chart(
-        self, input_data: CreateChartInput
+        self,
+        input_data: CreateChartInput,
+        progress: ProgressReporter | None = None,
     ) -> Sequence[TextContent | ImageContent]:
         """
         Create a Plotly visualization from the results of a SQL query.
         Supported chart types: bar, line, scatter, pie, histogram, box.
         """
+        progress = progress or ProgressReporter()
+
         try:
+            # --- Progress: executing query ---
+            await progress.report(
+                "Executing SQL query for chart data...", progress=1, total=4
+            )
+
             # Execute SQL query first
             exec_input = ExecuteSQLInput(
                 query=input_data.query, warehouse_id=input_data.warehouse_id
@@ -418,10 +480,21 @@ Provide only the SQL query without any explanation or markdown formatting."""
                 error = ErrorOutput(error="No data to chart")
                 return [TextContent(type="text", text=format_tool_output(error))]
 
+            # --- Progress: building DataFrame ---
+            await progress.report(
+                "Building DataFrame from query results...", progress=2, total=4
+            )
+
             df = pd.DataFrame(exec_output.data)
             if df.empty:
                 error = ErrorOutput(error="No data to chart")
                 return [TextContent(type="text", text=format_tool_output(error))]
+
+            # --- Progress: rendering chart ---
+            await progress.report(
+                f"Rendering {input_data.chart_type.value} chart with Plotly...",
+                progress=3, total=4,
+            )
 
             # Create a Plotly figure
             fig = self._create_plotly_figure(df, input_data)
@@ -441,6 +514,11 @@ Provide only the SQL query without any explanation or markdown formatting."""
                 chart_type=input_data.chart_type.value,
                 image_data=img_base64,
                 mime_type="image/png",
+            )
+
+            # --- Progress: complete ---
+            await progress.report(
+                "Chart rendering complete", progress=4, total=4
             )
 
             return [

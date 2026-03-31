@@ -54,6 +54,9 @@ from mcp.types import (
     ResourceTemplate,
 )
 
+# Progress notification support
+from databricks_mcp_server.progress import ProgressReporter
+
 # Implementation imports
 from databricks_mcp_server.implementation import (
     ResourceHandler,
@@ -209,6 +212,13 @@ class DatabricksMCPServer:
                 Sequence of MCP content objects (TextContent, ImageContent, etc.)
             """
             try:
+                # Build a progress reporter from the request context.
+                # If the client supplied a progressToken, notifications
+                # are emitted during long-running tools; otherwise they
+                # are silently skipped.
+                ctx = self.app.request_context
+                progress = ProgressReporter.from_request_context(ctx)
+
                 # Dispatch to the correct tool handler based on name
                 if name == "list_catalogs":
                     input_data = parse_tool_input(ListCatalogsInput, arguments or {})
@@ -228,15 +238,15 @@ class DatabricksMCPServer:
 
                 elif name == "execute_sql":
                     input_data = parse_tool_input(ExecuteSQLInput, arguments)
-                    return await self.tool_handler.execute_sql(input_data)
+                    return await self.tool_handler.execute_sql(input_data, progress)
 
                 elif name == "query_natural_language":
                     input_data = parse_tool_input(QueryNaturalLanguageInput, arguments)
-                    return await self.tool_handler.query_natural_language(input_data)
+                    return await self.tool_handler.query_natural_language(input_data, progress)
 
                 elif name == "create_chart":
                     input_data = parse_tool_input(CreateChartInput, arguments)
-                    return await self.tool_handler.create_chart(input_data)
+                    return await self.tool_handler.create_chart(input_data, progress)
 
                 # Handle unknown tool
                 else:

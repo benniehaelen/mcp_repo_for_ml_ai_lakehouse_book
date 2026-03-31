@@ -32,12 +32,13 @@ There is no configured linter or formatter in the project.
 Three-layer design using the MCP protocol over stdio:
 
 ```
-Clients (Claude Desktop / Python async client / Notebook client)
+Clients (Claude Desktop / Python async client / VS Code Copilot)
   → DatabricksMCPServer (server.py) — dispatches via MCP protocol
     → Handler Layer:
         ResourceHandler (resources.py)  — Unity Catalog metadata
         PromptHandler (prompts.py)      — prompt templates
         ToolHandler (tools.py)          — SQL execution, NL→SQL, charts
+        ProgressReporter (progress.py)  — notifications/progress for long-running tools
       → External: Databricks SDK, Anthropic API, Plotly
 ```
 
@@ -48,7 +49,7 @@ Clients (Claude Desktop / Python async client / Notebook client)
 - `implementation/tools.py` — 7 tools: `list_catalogs`, `list_schemas`, `list_tables`, `get_table_info`, `execute_sql`, `query_natural_language`, `create_chart`
 - `implementation/resources.py` — 3 resource URI patterns (`databricks://catalogs`, `databricks://catalog/{name}`, `databricks://table/{catalog}/{schema}/{table}`)
 - `implementation/prompts.py` — 3 prompt templates (query-table, analyze-data, explore-catalog)
-- `databricks_mcp_notebook_client.py` — synchronous notebook client returning Pandas DataFrames
+- `progress.py` — `ProgressReporter` helper for MCP progress notifications
 
 ## Key Patterns
 

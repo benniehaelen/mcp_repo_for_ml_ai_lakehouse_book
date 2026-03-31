@@ -6,6 +6,7 @@ A Model Context Protocol (MCP) server for Databricks Unity Catalog that enables:
 - **Natural language queries** powered by Claude
 - **Data visualization** with Plotly charts
 - **Multiple client interfaces** (Python, Databricks Notebooks)
+- **Progress notifications** for long-running operations via MCP `notifications/progress`
 
 ## Features
 
@@ -27,6 +28,22 @@ A Model Context Protocol (MCP) server for Databricks Unity Catalog that enables:
 - `query-table` - Generate SQL queries for specific tables
 - `analyze-data` - Analyze query results and provide insights
 - `explore-catalog` - Explore Unity Catalog structure
+
+### Progress Notifications
+
+Long-running tools (`execute_sql`, `query_natural_language`, `create_chart`) emit real-time MCP progress notifications when the client supplies a `progressToken` in the request's `_meta` field. This allows clients to display status updates during multi-step operations.
+
+For example, `query_natural_language` emits five stages:
+
+```
+notifications/progress → "Fetching table schema from Unity Catalog..."   (1/5)
+notifications/progress → "Generating SQL via Claude..."                  (2/5)
+notifications/progress → "Executing generated SQL against warehouse..."  (3/5)
+notifications/progress → "Processing query results..."                   (4/5)
+notifications/progress → "Natural language query complete"               (5/5)
+```
+
+If the client does not request progress (no `progressToken`), notifications are silently skipped.
 
 ## Installation
 
@@ -154,51 +171,6 @@ catalogs = await client.list_catalogs()
 schemas = await client.list_schemas(catalog="samples")
 ```
 
-### 3. Databricks Notebook Client
-
-The notebook client can be used directly within Databricks notebooks without running a separate server:
-
-```python
-# Install in notebook
-%pip install mcp anthropic plotly pandas databricks-sdk
-
-# Import and initialize
-from databricks_mcp_notebook_client import NotebookMCPClient
-
-client = NotebookMCPClient(
-    warehouse_id="your-warehouse-id",
-    anthropic_api_key="your-api-key"  # Optional, for NL queries
-)
-
-# List catalogs
-catalogs_df = client.list_catalogs()
-display(catalogs_df)
-
-# Execute SQL
-df = client.execute_sql("SELECT * FROM samples.nyctaxi.trips LIMIT 10")
-display(df)
-
-# Natural language query
-result = client.query_natural_language(
-    question="What are the top 10 pickup zip codes by trip count?",
-    catalog="samples",
-    schema="nyctaxi",
-    table="trips"
-)
-print(f"Generated SQL: {result['sql']}")
-display(result['data'])
-
-# Create chart
-fig = client.create_chart(
-    query="SELECT pickup_zip, COUNT(*) as trips FROM samples.nyctaxi.trips WHERE pickup_zip IS NOT NULL GROUP BY pickup_zip ORDER BY trips DESC LIMIT 10",
-    chart_type="bar",
-    x="pickup_zip",
-    y="trips",
-    title="Top 10 Pickup Zip Codes"
-)
-fig.show()
-```
-
 ## Architecture
 
 ```
@@ -207,11 +179,14 @@ fig.show()
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
 │  │   Tools    │  │ Resources  │  │  Prompts   │           │
 │  └────────────┘  └────────────┘  └────────────┘           │
+│                  ┌────────────────────┐                     │
+│                  │ ProgressReporter   │                     │
+│                  │ (notifications/    │                     │
+│                  │  progress)         │                     │
+│                  └────────────────────┘                     │
 └─────────────────────────────────────────────────────────────┘
                           │
-                          ├─── Python Client (asyncio, dynamic tool discovery)
-                          │
-                          └─── Notebook Client (direct SDK)
+                          └─── Python Client (asyncio, dynamic tool discovery)
 
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -239,6 +214,8 @@ Working examples are in the `examples/` directory:
 - **`basic_usage.py`** - Lists catalogs, schemas, tables, resources, and prompts
 - **`natural_language_queries.py`** - NL-to-SQL queries against the NYC taxi dataset
 - **`chart_examples.py`** - Generates all 6 chart types plus a multi-chart dashboard
+- **`resource_examples.py`** - Demonstrates the MCP resource layer (URI-based catalog browsing)
+- **`prompt_examples.py`** - Demonstrates MCP prompt templates (query-table, analyze-data, explore-catalog)
 - **`test_databricks.py`** - Direct Databricks SDK connection test
 
 Run any example:
@@ -249,6 +226,8 @@ python examples/chart_examples.py
 python examples/chart_examples.py --dashboard
 python examples/natural_language_queries.py
 python examples/natural_language_queries.py --interactive
+python examples/resource_examples.py
+python examples/prompt_examples.py
 ```
 
 ## Troubleshooting

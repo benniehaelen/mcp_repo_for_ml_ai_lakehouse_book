@@ -1,15 +1,8 @@
-# """Databricks MCP Server - MCP Server for Unity Catalog"""
-
-# __version__ = "0.1.0"
-
-# from databricks_mcp_server.server import DatabricksMCPServer
-
-# __all__ = ["DatabricksMCPServer"]
-
-
 """
-Implementation modules for Databricks MCP Server
-Separates resources, prompts, and tools for better code organization
+Databricks MCP Server - MCP Server for Unity Catalog
+
+Implementation modules separated into resources, prompts, and tools
+for better code organization.
 """
 from databricks_mcp_server.implementation.resources import ResourceHandler
 from databricks_mcp_server.implementation.prompts import PromptHandler
